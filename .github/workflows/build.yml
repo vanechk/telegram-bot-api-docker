@@ -1,0 +1,35 @@
+name: build
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "tdlib/telegram-bot-api git ref to build"
+        default: "master"
+        required: false
+  schedule:
+    # Nightly build of upstream master: when Telegram publishes tdlib code
+    # for a new cloud file_id format, this picks it up within a day.
+    - cron: "0 3 * * *"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Build image
+        run: |
+          REF="${{ github.event.inputs.ref || 'master' }}"
+          IMG="ghcr.io/${{ github.repository_owner }}/telegram-bot-api"
+          docker build --build-arg "TBA_REF=$REF" -t "$IMG:latest" .
+          VERSION=$(docker run --rm --entrypoint /usr/local/bin/telegram-bot-api "$IMG:latest" --version | grep -oE '[0-9]+\.[0-9]+' | head -1)
+          echo "built Bot API $VERSION"
+          docker tag "$IMG:latest" "$IMG:$VERSION"
+          docker push "$IMG:latest"
+          docker push "$IMG:$VERSION"
